@@ -35,14 +35,20 @@ public class PdfSummarizerApplication implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-
-        // Send the PDF directly to Claude to summarise
-        var pdfResource = new ClassPathResource("/Streambased-Reference-Architecture.pdf");
-        System.out.println("Summary:\n" + this.summarize(new Media(Media.Format.DOC_PDF, pdfResource)));
-
-        // Extract the text from the PDF using PDFBox and then send the text to Claude to be summarised
-        var pdfFile = new ClassPathResource("/Streambased-Reference-Architecture.pdf").getFile();
-        System.out.println("Summary of extracted text:\n" + this.summarize(this.getTextFromPdf(pdfFile)));
+        String fileName = "/Streambased-Reference-Architecture.pdf";
+        String summary;
+        if(getNumberOfPages(new ClassPathResource(fileName).getFile()) > 100) {
+            // PDF has more than 100 pages so we need to extract the text and send that to Claude
+            System.out.println("Extracting text from PDF.");
+            var pdfFile = new ClassPathResource(fileName).getFile();
+            summary = this.summarize(this.getTextFromPdf(pdfFile));
+        } else {
+            // Send the PDF directly to Claude to summarise
+            System.out.println("Sending PDF directly to Claude.");
+            var pdfResource = new ClassPathResource(fileName);
+            summary = this.summarize(new Media(Media.Format.DOC_PDF, pdfResource));
+        }
+        System.out.println("Summary: " + summary);
     }
 
     @Bean
@@ -64,24 +70,32 @@ public class PdfSummarizerApplication implements CommandLineRunner {
     }
 
     public String summarize(Media file) {
-        return chatClient
-                .prompt()
-                .user(promptUserSpec ->
-                        promptUserSpec
-                                .text("Please summarise this file.")
-                                .media(file))
-                .call()
-                .content();
+        try {
+            return chatClient
+                    .prompt()
+                    .user(promptUserSpec ->
+                            promptUserSpec
+                                    .text("Please summarise this file.")
+                                    .media(file))
+                    .call()
+                    .content();
+        } catch (Exception e) {
+            return "Error encountered: " + e.getMessage();
+        }
     }
 
     public String summarize(String text) {
-        return chatClient
-                .prompt()
-                .user(promptUserSpec ->
-                        promptUserSpec
-                                .text("Please summarise this text: " + text))
-                .call()
-                .content();
+        try {
+            return chatClient
+                    .prompt()
+                    .user(promptUserSpec ->
+                            promptUserSpec
+                                    .text("Please summarise this text: " + text))
+                    .call()
+                    .content();
+        } catch (Exception e) {
+            return "Error encountered: " + e.getMessage();
+        }
     }
 
     private String getTextFromPdf(File pdfFile) throws IOException {
@@ -90,5 +104,12 @@ public class PdfSummarizerApplication implements CommandLineRunner {
         String text = stripper.getText(document);
         document.close();
         return text;
+    }
+
+    private int getNumberOfPages(File pdfFile) throws IOException {
+        PDDocument document = Loader.loadPDF(pdfFile);
+        int numberOfPages = document.getNumberOfPages();
+        document.close();
+        return numberOfPages;
     }
 }
